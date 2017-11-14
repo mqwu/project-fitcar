@@ -31,7 +31,8 @@ df_veh <- readRDS(paste0(d_path,"/df_veh.rds"))
 
 veh <- df_veh[["vehicles"]]  # veh: make model year
 diag <- df_veh[["vehicle_diagnostics"]]  # 19970 x 8
-diag_event<- df_veh[["diagnostic_event_lookup"]]  # 4 x 3
+diag_event<t- df_veh[["diagnostic_event_lookup"]]  # 4 x 3
+maint <- df_veh[["maintenance"]]
 
 
 #-----------------------------------------------------
@@ -52,6 +53,13 @@ diag_veh <- diag_nodup %>%
                 select(dtcCode, dtcDesc, dtcState, checkEngineState, diagnostic_event_lookup_id, timeStamp, vehicle_id, make, model, engine, year)
 
 
+veh_miles <- maint %>% 
+                filter(lastServiceOdometer!=0) %>%  
+                group_by(vehicle_id) %>% 
+                arrange( desc(lastServiceOdometer) ) %>% 
+                slice(1) %>% 
+                select(vehicle_id, lastServiceDate, lastServiceOdometer) %>% 
+                mutate(mileage_group = ifelse(lastServiceOdometer < 100000, "Less than 100k", ifelse(lastServiceOdometer < 150000, "100 to 150k", "Greater than 150k")))
 
 
 ########################################################
@@ -293,7 +301,7 @@ df_sub_pat <- rownames_to_column(df_sub_pat, "end_code_id") %>% arrange(end_code
 pat_and_sub <- pa %>% left_join(df_sub_pat, by=c("end_code_id"))
 #write.csv(pat_and_sub, file = paste0(d_path, "/pat_and_sub.csv"), row.names=F)  
 
-save.image(file="./data/pat_and_sub.RData")
+#save.image(file="./data/pat_and_sub.RData")
 #load("Z:/project/FitCar/data/pat_and_sub.RData")  # also need to load libs
 #load("./data/pat_and_sub.RData")  # also need to load libs
 
@@ -363,14 +371,17 @@ pat_and_sub_keep <- bind_cols(pat_and_sub, sub_keep)
 pat_and_sub_nodup <- pat_and_sub_keep %>% filter(keep==1)
 
 # add veh characteristic
-pat_and_sub_nodup <- pat_and_sub_nodup %>% left_join(veh, by = c("vehicle_id" = "id")) %>% select(-(createdTime:users_id))
-#write.csv(pat_and_sub_nodup, file = paste0(d_path, "/pat_and_sub_nodup.csv"), row.names=F)  
+pat_and_sub_nodup_vehinfo <- pat_and_sub_nodup %>% 
+                                    left_join(veh, by = c("vehicle_id" = "id")) %>% 
+                                    select(-(createdTime:users_id)) %>% 
+                                    left_join(veh_miles, by = c("vehicle_id"))
+#write.csv(pat_and_sub_nodup_vehinfo, file = paste0(d_path, "/pat_and_sub_nodup.csv"), row.names=F)  
 
 # add weight
-pat_and_sub_nodup_w <- pat_and_sub_nodup %>% 
-                          group_by(vehicle_id, sub_pattern) %>% 
-                          summarize(n_sub_per_veh = n()) %>% 
-                          mutate(w = 1.0/n_sub_per_veh)
+pat_and_sub_nodup_w <- pat_and_sub_nodup_vehinfo %>% 
+                                group_by(vehicle_id, sub_pattern) %>% 
+                                summarize(n_sub_per_veh = n()) %>% 
+                                mutate(w = 1.0/n_sub_per_veh)
 
 
 # calculate # of veh for each sub_pat
@@ -379,15 +390,15 @@ n_veh_of_subpat <- pat_and_sub_nodup_w %>% group_by(sub_pattern) %>% summarise(n
 n_veh_of_subpat_gt5 <- n_veh_of_subpat %>% filter(n_veh>=5)
 
 # calculate prob for each pattern weighted # of appearance with each vehicle 
-pat_and_sub_nodup_prob  <- pat_and_sub_nodup %>% 
-                              left_join(pat_and_sub_nodup_w, by = c("vehicle_id", "sub_pattern")) %>% 
-                              group_by(sub_pattern, critical_fault_in_1wk) %>% 
-                              summarise(count=sum(w)) %>% 
-                              spread(key=critical_fault_in_1wk, value=count, fill=0) %>% 
-                              mutate(Total = Yes + No) %>%
-                              mutate(Yes=floor(Yes+0.5), No=Total-Yes) %>% 
-                              mutate(Prob_follow_by_crt_fault = Yes/Total * 1.0) %>% 
-                              mutate(CI_Low=ifelse(Yes>=1, binom.test(Yes, Total)$conf.int[1], NA), CI_Up=ifelse(Yes>=1, binom.test(Yes, Total)$conf.int[2], NA))
+pat_and_sub_nodup_prob  <- pat_and_sub_nodup_vehinfo %>% 
+                                        left_join(pat_and_sub_nodup_w, by = c("vehicle_id", "sub_pattern")) %>% 
+                                        group_by(sub_pattern, critical_fault_in_1wk) %>% 
+                                        summarise(count=sum(w)) %>% 
+                                        spread(key=critical_fault_in_1wk, value=count, fill=0) %>% 
+                                        mutate(Total = Yes + No) %>%
+                                        mutate(Yes=floor(Yes+0.5), No=Total-Yes) %>% 
+                                        mutate(Prob_follow_by_crt_fault = Yes/Total * 1.0) %>% 
+                                        mutate(CI_Low=ifelse(Yes>=1, binom.test(Yes, Total)$conf.int[1], NA), CI_Up=ifelse(Yes>=1, binom.test(Yes, Total)$conf.int[2], NA))
 
 # summary of sub-pattern prob.
 all_veh_subpat_sum <- n_veh_of_subpat %>% left_join(pat_and_sub_nodup_prob, by=c("sub_pattern")) %>% arrange(desc(Prob_follow_by_crt_fault))
@@ -399,11 +410,13 @@ ge5_veh_subpat_sum <- n_veh_of_subpat_gt5 %>% left_join(pat_and_sub_nodup_prob, 
 
 ## add veh info to the prob. results
 # find distinct veh set in the pat_and_sub_nodup set
-pat_and_sub_nodup_dist_veh <- pat_and_sub_nodup %>% 
-                                    distinct(sub_pattern, vehicle_id) %>% 
+pat_and_sub_nodup_dist_veh <- pat_and_sub_nodup_vehinfo %>% 
+                                    distinct(sub_pattern, vehicle_id) %>%
                                     left_join(veh, by = c("vehicle_id" = "id")) %>% 
-                                    select(-(createdTime:users_id)) %>% 
-                                    arrange(sub_pattern, make, model, year) 
+                                    select(-(createdTime:users_id)) %>%
+                                    left_join(veh_miles, by = c("vehicle_id")) %>% 
+                                    select(-(lastServiceDate:lastServiceOdometer)) %>% 
+                                    arrange(sub_pattern, make, model, year, mileage_group) 
 
 all_veh_subpat_sum_detail <- pat_and_sub_nodup_dist_veh %>% left_join(all_veh_subpat_sum, by = "sub_pattern")
 ge5_veh_subpat_sum_detail <- pat_and_sub_nodup_dist_veh %>% 
