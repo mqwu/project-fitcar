@@ -1,7 +1,6 @@
 
 rm(list=ls(all=TRUE))  # clean memory
 
-
 #--------------------------------------------------------
 # Working dir
 #-------------------------------------------------------- 
@@ -37,9 +36,7 @@ for (i in 1:length(files)){
 }
 
 
-
 ## group data frames
-
 # vehicles 
 veh <- c("vehicles", "devices", "notifications", "notification_type_lookup",  "franchise", 
          "stores", "coupon_details", "maintenance", "maintainance_state_lookup", "service_based_lookup",
@@ -68,7 +65,5 @@ saveRDS(df_trip, paste0(d_path,"/df_trip.rds"))
 saveRDS(df_driver, paste0(d_path,"/df_dirver.rds"))
 saveRDS(df_user, paste0(d_path,"/df_user.rds"))
 saveRDS(df_geof, paste0(d_path,"/df_geof.rds"))
-
-
 
 

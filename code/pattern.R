@@ -1,12 +1,12 @@
 
-rm(list=ls(all=TRUE))  # clean memory
-
+# clean memory
+rm(list=ls(all=TRUE))  
 
 ########################################################
 # Working dir
 ########################################################
 setwd("Z:/project/FitCar/")
-#setwd('C:\\Apps\\projects\\FitCar')
+
 
 ########################################################
 # Libs and tools
@@ -52,7 +52,6 @@ diag_veh <- diag_nodup %>%
                 left_join(veh, by = c("vehicle_id" = "id")) %>% 
                 select(dtcCode, dtcDesc, dtcState, checkEngineState, diagnostic_event_lookup_id, timeStamp, vehicle_id, make, model, engine, year)
 
-
 veh_miles <- maint %>% 
                 filter(lastServiceOdometer!=0) %>%  
                 group_by(vehicle_id) %>% 
@@ -60,6 +59,7 @@ veh_miles <- maint %>%
                 slice(1) %>% 
                 select(vehicle_id, lastServiceDate, lastServiceOdometer) %>% 
                 mutate(mileage_group = ifelse(lastServiceOdometer < 100000, "Less than 100k", ifelse(lastServiceOdometer < 150000, "100 to 150k", "Greater than 150k")))
+
 
 
 ########################################################
@@ -307,7 +307,6 @@ pat_and_sub <- pa %>% left_join(df_sub_pat, by=c("end_code_id"))
 
 
 
-
 #------------------------------------------------------------------------------------------------------------------------
 # step 3 analysis pattern
 #------------------------------------------------------------------------------------------------------------------------
@@ -425,6 +424,4 @@ ge5_veh_subpat_sum_detail <- pat_and_sub_nodup_dist_veh %>%
 
 #write.csv(all_veh_subpat_sum_detail, file = paste0(d_path, "/all_veh_subpat_sum_details.csv"), row.names=F)  
 #write.csv(ge5_veh_subpat_sum_detail, file = paste0(d_path, "/ge5_veh_subpat_sum_details.csv"), row.names=F)  
-
-
 
